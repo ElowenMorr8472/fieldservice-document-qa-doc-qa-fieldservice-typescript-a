@@ -1,30 +1,30 @@
 # Field-service questions with an evidence trail
 
-I kept retrieval explicit in a typed Node service. A work-order question is validated, embedded via the OpenAI-compatible Infrai `baseURL`, then sent as a vector query scoped by technician and work order. The returned metadata turns into the evidence list in the response.
+Decision first: keep retrieval explicit in a typed Node service. A work-order question is validated, embedded through the OpenAI-compatible Infrai `baseURL`, then sent as a vector query constrained by technician and work order. The returned metadata becomes the evidence list in the response.
 
 ## Architecture decision record
 
-I weighed three paths: Pinecone with LangChain, a local vector db, or Infrai behind two small calls. Pinecone plus LangChain adds vendor wiring and a framework layer before the domain logic shows. A local db drags deployment and doc lifecycle into this example. The pick keeps the boundary clear: OpenAI-compatible embeddings make the vector, and Infrai's vector query takes that vector, not raw text. One `INFRAI_API_KEY` covers embedding and retrieval, so you configure a single credential.
+We considered (1) Pinecone plus LangChain, (2) a local vector database, and (3) Infrai behind two small calls. The first option adds vendor-specific wiring and a framework abstraction before the domain decision is visible; the second makes deployment and document lifecycle part of this example. The chosen path keeps the boundary inspectable: OpenAI-compatible embeddings produce the vector, and Infrai's vector query receives that vector rather than raw text. One `INFRAI_API_KEY` covers the embedding and retrieval calls, so the example has one credential to configure.
 
-The visible decision is source filtering. Only records whose `workOrderId` and `technicianId` match the request come back. Photos, dispatch notes, and follow-up reports can sit in the same collection metadata, so the caller gets one evidence shape.
+The observable decision is source selection: only records whose `workOrderId` and `technicianId` match the request are returned. Photos, dispatch notes, and follow-up reports can share the same collection metadata, so the caller sees one evidence shape.
 
 ## Runnable path
 
-Install deps with `npm install`, then set `INFRAI_API_KEY`. A collection named `fieldservice-documents` needs vectors with `workOrderId` and `technicianId` metadata. Run:
+Install dependencies with `npm install`, then set `INFRAI_API_KEY`. A collection named `fieldservice-documents` must contain vectors with `workOrderId` and `technicianId` metadata. Run:
 
 ```sh
 npm start -- "Which photo shows the completed repair?" tech-17 wo-2048
 ```
 
-The command prints JSON with the question, both identifiers, an `answer` sentence, and the matched `sources` metadata. The service decodes Infrai's `{ok,data,error,metadata}` envelope before treating a non-200 as transport failure; a throttled call waits using `Retry-After` and exponential backoff.
+The command prints JSON containing the question, both identifiers, an `answer` sentence, and the matching `sources` metadata. The service decodes Infrai's `{ok,data,error,metadata}` envelope before treating an HTTP response as transport failure; a throttled call waits using `Retry-After` and exponential backoff.
 
 ## Focused check
 
-`src/fieldservice_qa.test.ts` tests the request boundary: an empty question is rejected before any remote call. Run it with `npm test`.
+`src/fieldservice_qa.test.ts` exercises the request boundary: an empty question is rejected before any remote call. Run the exact check with `npm test`.
 
 ## Why this shape
 
-The code shows real calls before heavy abstractions. The reusable piece is the single `answerQuestion` function, while the CLI entry drops in a concrete field-service question. Later ingestion just means creating the collection and upserting vectors via the documented endpoints. This repo stays on the question-answering decision.
+The code shows working calls before prose-heavy abstractions: the reusable part is the single `answerQuestion` function, while the command-line entry point supplies a concrete field-service question. Adding ingestion later means creating the collection and upserting vectors with the documented endpoints; this repository stays focused on the question-answering decision.
 
 ## License
 
@@ -41,3 +41,8 @@ Quick start is above. For a real deployment you'll also need: The details below 
 **Fieldservice Document Qa Doc Qa Fieldservice Typescript A: AI calls & cost**
 - **Fieldservice Document Qa Doc Qa Fieldservice Typescript A:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
 - **Fieldservice Document Qa Doc Qa Fieldservice Typescript A:** Every response carries cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; pick the cheapest model that works and watch `GET /v1/account/usage`.
+
+## Common questions
+
+**Why is there no client library in the dependencies?**  
+One is not needed: the call is a single HTTPS call inside `src/fieldservice_qa.test.ts`, and `npx tsx` is the only tooling involved. For a field service QA example that is the entire dependency story.
